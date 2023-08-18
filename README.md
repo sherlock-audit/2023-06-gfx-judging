@@ -3,7 +3,7 @@
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/48 
 
 ## Found by 
-kutugu, mahyar, mstpr-brainbot, trachev, xiaoming90
+Dug, kutugu, mahyar, mstpr-brainbot, trachev, xiaoming90
 ## Summary
 
 The users' assets are wrongly sent to the owner due to a lack of segregation between users' assets and collected fees, which might result in an irreversible loss of assets for the victims.
@@ -189,106 +189,12 @@ function withdrawNative() external onlyOwner {
 
 I believe solution 2 is the better option here, but will have to consider more before implementation
 
-# Issue H-2: Malicious users could dilute and reduce the fee 
-
-Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/49 
-
-## Found by 
-xiaoming90
-## Summary
-
-Malicious users could dilute the `feePerUser` to reduce the fee they must pay when claiming orders. This lead to a loss of assets due to lesser fees being collected for the owner and a loss of opportunity costs for the users.
-
-## Vulnerability Detail
-
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L1309
-
-```solidity
-File: LimitOrderRegistry.sol
-1299:     function _fulfillOrder(
-1300:         uint256 target,
-1301:         UniswapV3Pool pool,
-1302:         BatchOrder storage order,
-1303:         uint256 estimatedFee,
-1304:         uint256 deadline
-1305:     ) internal {
-1306:         // Save fee per user in Claim Struct.
-1307:         uint256 totalUsers = order.userCount;
-1308:         Claim storage newClaim = claim[order.batchId];
-1309:         newClaim.feePerUser = uint128(estimatedFee / totalUsers);
-1310:         newClaim.pool = pool;
-..SNIP..
-```
-
-As per Line 1309, all users within a batch order share the gas cost for fulfilling the order. The cost is split equally based on the number the users.
-
-However, the problem is that if the minimum asset is not optimal (lower than expected), it will be cost-effective for a malicious user to use multiple different wallet addresses to submit the small order to dilute the `feePerUser`.
-
-Assume the following:
-
-- upkeepGasLimit = 300_000
-- upkeepGasPrice = 150
-- 1 ETH worth 2000 USD
-
-In this case, the `estimatedFee` for fulfilling each batch order will be computed as follows:
-
-```solidity
-estimatedFee = upkeepGasLimit * gasPrice
-estimatedFee = 300,000 * 150 Gwei = 45,000,000 Gwei = 0.045 ETH
-```
-
-The `estimatedFee` will be `0.045 ETH`, which is worth 90 USD.
-
-If Bob is the only user within the batch order, he has to pay 90 USD worth of ETH all by himself when claiming the order.
-
-If the minimum asset of a new order is set to 5 USDC, Bob could use two unique wallet addresses to create a new order within the same batch order by depositing a minimum sum of 5 USDC. In total, he spent 10 USDC to carry out the attack.
-
-Subseqently, the `estimatedFee` will be divided by 3 users, which results in a `feePerUser` of 30 USD. Thus, when Bob claims his order, he only needs to pay 30 USD instead of 90 USD as a fee (60 USD cheaper)
-
-Bob has no intention of claiming the two small orders that he used for the exploitation. Thus, he will forfeit around 10 USD worth of assets. In addition, he will not be paying 60 USD worth of the fee to the owner since he will not call the `claimOrder` function.
-
-In summary, Bob saved 50 USD (90 - 30 - 10) through this exploit, and the owner lost around 60 USD of the fee.
-
-## Impact
-
-The immediate impact is a loss of assets for the owner due to lesser fees being collected from the users. 
-
-If the losses are significant, it will indirectly affect the owner's ability to replenish the LINK tokens needed to fund the Chainlink Automation. If the LINK tokens were insufficient, the user's orders might not be fulfilled when they are already ITM, potentially leading to a loss of opportunity costs for the users. In addition, since fees are only charged on fulfilled orders, fewer fulfilled orders also mean there will be lesser fees collected.
-
-## Code Snippet
-
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L1309
-
-## Tool used
-
-Manual Review
-
-## Recommendation
-
-One potential solution is to collect the fee in advance based on the current number of users in a batch order. This should provide a rough estimation of the expected `feePerUser` when the order is fulfilled. When the users claim the order, any excess fee will be refunded, or any deficit will be collected from the users.
-
-This would minimize the owner's loss during an attack. Additionally, it would make the attack unprofitable regardless of the minimum sum configured by the owner, which will benefit users who might not know how to compute the optimal minimum asset for each token to mitigate this risk. 
-
-Also, the optimal minimum asset to mitigate this risk might differ from the optimal minimum asset needed to prevent users from spamming small orders.
-
-
-
-## Discussion
-
-**elee1766**
-
-this is a understood risk.
-
-we believe that setting proper minimums is the correct solution for the problem. 
-
-considered, but no immediate fix will be implemented. 
-
-# Issue H-3: Users' funds could be stolen or locked by malicious or rouge owners 
+# Issue H-2: Users' funds could be stolen or locked by malicious or rouge owners 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/54 
 
 ## Found by 
-Dug, mstpr-brainbot, xiaoming90
+Dug, mstpr-brainbot, p0wd3r, xiaoming90
 ## Summary
 
 Users' funds could be stolen or locked by malicious or rouge owners.
@@ -375,30 +281,7 @@ this is a valid concern.
 
 I think a sanity check on the gas variable makes a lot of sense. 
 
-# Issue M-1: The protocol would not work with BNB like coins that revert on 0 values, even if it is stated that it should work with any coin traded on UniswapV3 
-
-Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/24 
-
-## Found by 
-Vagner
-## Summary
-`LimitOrderRegistry.sol` checks after every interaction with the `POSITION_MANAGER` if the allowance is greater than 0 and approves to 0 if that's the case but in the case of BNB this would revert all the time.
-## Vulnerability Detail
-BNB on ethereum mainnet reverts on every function if the value provided is 0, as you can see here https://etherscan.io/token/0xB8c77482e45F1F44dE1745F52C74426C631bDD52#code#L94 so if the protocol intends to interact with BNB, a token which is supported on UniswapV3 and has a high market cap, this would revert because of how the protocol tries to approve to 0 after `IncreaseLiquidityParams` or `mint` called on `POSITION_MANAGER`.
-## Impact
-This would have medium impact since some tokens supported on UniswapV3 would not be able to interact with the protocol as it was stated
-## Code Snippet
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L1197-L1201
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L1243-L1247
-## Tool used
-
-Manual Review
-
-## Recommendation
-The easiest way to solve this problem would be to use the `SafeERC20.sol` from OpenZeppelin instead of `SafeTransferLib` from solmate since the big difference between this two is the fact that the safe approve functions from OpenZeppelin always approves to 0, in the case where normal approve reverts so it will solve the problem with tokens that have the Race Condition check into their approve function like USDT https://github.com/OpenZeppelin/openzeppelin-contracts/blob/996168f1f114645b01a1c2e6909c9d98ec451203/contracts/token/ERC20/utils/SafeERC20.sol#L79-L82, so if you use the OpenZeppelin version there is no need to check the allowances after.
-
-
-# Issue M-2: Owners will incur loss and bad debt if the value of a token crashes 
+# Issue M-1: Owners will incur loss and bad debt if the value of a token crashes 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/51 
 
@@ -463,84 +346,7 @@ this is a known issue, but i don't think we will fix it.
 
 owners recognize that gas can possibly be "wasted" under bad network conditions 
 
-# Issue M-3: Heartbeat threshold is hardcoded 
-
-Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/53 
-
-## Found by 
-xiaoming90
-## Summary
-
-An immutable heartbeat threshold might cause an incorrect staleness check leading to the wrong gas price being computed.
-
-## Vulnerability Detail
-
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L229
-
-```solidity
-File: LimitOrderRegistry.sol
-229:     uint256 public constant FAST_GAS_HEARTBEAT = 7200;
-..SNIP..
-1447:     function getGasPrice() public view returns (uint256) {
-1448:         // If gas feed is set use it.
-1449:         if (fastGasFeed != address(0)) {
-1450:             (, int256 _answer, , uint256 _timestamp, ) = IChainlinkAggregator(fastGasFeed).latestRoundData();
-1451:             uint256 timeSinceLastUpdate = block.timestamp - _timestamp;
-1452:             // Check answer is not stale.
-1453:             if (timeSinceLastUpdate > FAST_GAS_HEARTBEAT) {
-1454:                 // If answer is stale use owner set value.
-1455:                 // Multiply by 1e9 to convert gas price to gwei
-1456:                 return uint256(upkeepGasPrice) * 1e9;
-1457:             } else {
-1458:                 // Else use the datafeed value.
-1459:                 uint256 answer = uint256(_answer);
-1460:                 return answer;
-1461:             }
-1462:         }
-1463:         // Else use owner set value.
-1464:         return uint256(upkeepGasPrice) * 1e9; // Multiply by 1e9 to convert gas price to gwei
-1465:     }
-```
-
-Line 1453 in the above code checks if the value returned from the Chainlink gas feed is stale. If the time last update is larger than `FAST_GAS_HEARTBEAT` (7200 seconds/ 2 hours), then the value is considered stale, and the owner set value will be used.
-
-However, the `FAST_GAS_HEARTBEAT` is hardcoded and immutable. This might be an issue because Chainlink's heartbeat value might be changed in the future. For instance, it might reduce the heartbeat to 3600 seconds (1 hour). If this happen, the existing code will fail to detect the stale value returned from the price feed.
-
-In addition, as per the contest's README, the project is intended to be deployed on multiple L2 chains (Polygon, Optimism, Arbitrum). At the moment, there is no fast gas price feed available on the L2 chains. However, if the fast gas price feed becomes available on L2 chains in the future, the heartbeat of those feeds might not be equal to 7200 seconds.
-
-As mentioned by [Chainlink documentation](https://docs.chain.link/data-feeds):
-
-> Heartbeat and deviation thresholds can also differ for the same asset across different blockchains. 
-
-and existing observation that the heartbeat of price feed across different blockchains are often different (e.g. AAVE/USD on Ethereum - 1 hour heartbeat, AAVE/USD on Arbitrum - 24 hours heartbeat).
-
-In this case, if the owner intended to add L2's fast gas price feed in the future, they will not be able to configure the `FAST_GAS_HEARTBEAT` variable to a different value.
-
-## Impact
-
-Risk of incorrect staleness check leading to the wrong gas price being computed.
-
-## Code Snippet
-
-https://github.com/sherlock-audit/2023-06-gfx/blob/main/uniswap-v3-limit-orders/src/LimitOrderRegistry.sol#L229
-
-## Tool used
-
-Manual Review
-
-## Recommendation
-
-Consider allowing the owner to update the heartbeat variable in the contract.
-
-
-
-## Discussion
-
-**elee1766**
-
-yes
-
-# Issue M-4: Owner unable to collect fulfillment fee from certain users due to revert error 
+# Issue M-2: Owner unable to collect fulfillment fee from certain users due to revert error 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/55 
 
@@ -656,7 +462,7 @@ uint256 owed = (totalTokenOut * depositAmount) / totalTokenDeposited;
 
 i agree - this change should be made. 
 
-# Issue M-5: getGasPrice() doesn't check Arbitrum l2 chainlink feed is active 
+# Issue M-3: getGasPrice() doesn't check Arbitrum l2 chainlink feed is active 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/65 
 
@@ -732,6 +538,7 @@ https://github.com/sherlock-audit/2023-02-bond-judging/issues/1
 https://github.com/sherlock-audit/2022-11-sentiment-judging/issues/3
 
 https://github.com/sherlock-audit/2023-01-sentiment-judging/issues/16
+
 
 
 
