@@ -189,6 +189,19 @@ function withdrawNative() external onlyOwner {
 
 I believe solution 2 is the better option here, but will have to consider more before implementation
 
+**elee1766**
+
+https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
+
+
+**elee1766**
+
+fix
+
+**xiaoming9090**
+
+Verified. Fixed in https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
+
 # Issue H-2: Users' funds could be stolen or locked by malicious or rouge owners 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/54 
@@ -462,6 +475,19 @@ uint256 owed = (totalTokenOut * depositAmount) / totalTokenDeposited;
 
 i agree - this change should be made. 
 
+**elee1766**
+
+https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
+
+
+**elee1766**
+
+fix
+
+**xiaoming9090**
+
+Verified. Fixed in https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
+
 # Issue M-3: getGasPrice() doesn't check Arbitrum l2 chainlink feed is active 
 
 Source: https://github.com/sherlock-audit/2023-06-gfx-judging/issues/65 
@@ -541,4 +567,21 @@ https://github.com/sherlock-audit/2023-01-sentiment-judging/issues/16
 
 
 
+
+
+
+## Discussion
+
+**elee1766**
+
+https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
+
+
+**elee1766**
+
+fix
+
+**xiaoming9090**
+
+Verified. Fixed in https://github.com/gfx-labs/uniswap-v3-limit-orders/pull/1
 
